@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Finnish to English Match Practice</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar" aria-label="Site header">
+        <p class="brand">Foresight Language Lab</p>
+        <nav class="topnav" aria-label="Primary">
+          <a href="index.html">Practice</a>
+          <a href="progress.html">Progress</a>
+          <a href="about.html">About</a>
+        </nav>
+      </header>
+
+      <section id="practice" class="hero">
+        <p class="eyebrow">Language Practice</p>
+        <h1>Match Finnish Words to English</h1>
+        <p class="subtext">
+          Import Excel or CSV with Finnish words in column A and English words in column B.
+        </p>
+      </section>
+
+      <section class="controls" aria-label="Practice steps">
+        <ol class="stepper" aria-label="Practice setup steps">
+          <li class="step active" data-step="1" role="button" tabindex="0" aria-label="Go to step 1">1. Import</li>
+          <li class="step" data-step="2" role="button" tabindex="0" aria-label="Go to step 2">2. Setup</li>
+          <li class="step" data-step="3" role="button" tabindex="0" aria-label="Go to step 3">3. Start</li>
+        </ol>
+
+        <div class="step-panel" data-step-panel="1">
+          <label class="file-input">
+            <span>Excel / CSV file</span>
+            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+          </label>
+          <p id="fileInlineError" class="inline-error hidden"></p>
+          <div class="step-actions">
+            <button id="importPrimaryBtn" type="button">Import word set</button>
+            <button id="sampleBtn" type="button" class="ghost">Use sample set</button>
+            <button id="openSettingsBtn" type="button" class="ghost">Settings</button>
+          </div>
+        </div>
+
+        <div class="step-panel hidden" data-step-panel="2">
+          <div class="mode-stack">
+            <div class="mode-group" role="group" aria-label="Game mode">
+              <span class="group-label">Game mode</span>
+              <button class="mode-btn active" data-mode="match" type="button">1) Combine boxes</button>
+              <button class="mode-btn" data-mode="write" type="button">2) Write translations</button>
+              <button class="mode-btn" data-mode="flash" type="button">3) Flashcards</button>
+            </div>
+            <div class="mode-subgroup">
+              <label class="chapter-input">
+                <span>Chapter</span>
+                <select id="chapterSelect" disabled>
+                  <option value="__all__">All chapters</option>
+                </select>
+              </label>
+              <p id="chapterInlineError" class="inline-error hidden"></p>
+            </div>
+          </div>
+          <label class="switch-toggle" for="timedToggle">
+            <span class="group-label">Timed mode</span>
+            <span class="switch-wrap">
+              <input id="timedToggle" type="checkbox" />
+              <span class="slider" aria-hidden="true"></span>
+            </span>
+            <span class="switch-copy">1 minute challenge</span>
+          </label>
+          <div class="step-actions">
+            <button id="continueBtn" type="button">Continue</button>
+          </div>
+        </div>
+
+        <div class="step-panel hidden" data-step-panel="3">
+          <p id="readySummaryText" class="inline-note">Ready to start.</p>
+          <div class="step-actions">
+            <button id="startBtn" type="button">Start</button>
+            <button id="syncNowBtn" type="button" class="ghost" disabled title="Connect Sync first">Sync now</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="miniBar" class="mini-bar hidden" aria-label="Gameplay info">
+        <span id="miniDataset">Dataset: -</span>
+        <span id="miniChapter">Chapter: -</span>
+        <span id="miniMode">Mode: -</span>
+        <span id="miniTimer">Timer: Off</span>
+        <span id="miniProgress">Progress: 0/0</span>
+        <button id="miniSettingsBtn" type="button" class="ghost">Settings</button>
+      </div>
+
+      <section id="gameplayArea" class="hidden">
+        <section class="status-row" aria-live="polite">
+          <p id="statusText">Load a file or sample words to begin.</p>
+          <p id="scoreText">0 correct / 0 attempts</p>
+          <p id="timerText">Timer: Off</p>
+        </section>
+
+        <section id="matchWrap" class="board-wrap" aria-label="Matching board">
+          <div id="board" class="board">
+            <svg id="lineLayer" aria-hidden="true"></svg>
+            <div class="column">
+              <h2>Finnish</h2>
+              <div id="finnishColumn" class="word-list"></div>
+            </div>
+            <div class="column">
+              <h2>English</h2>
+              <div id="englishColumn" class="word-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="writeWrap" class="mode-panel hidden" aria-label="Write mode">
+          <div class="write-panel">
+            <h2>Write the English Translation</h2>
+            <div id="writeList" class="write-list"></div>
+            <button id="checkWriteBtn" type="button">Check Answers</button>
+          </div>
+        </section>
+
+        <section id="flashWrap" class="mode-panel hidden" aria-label="Flashcard mode">
+          <div class="flash-panel">
+            <p id="flashProgress" class="flash-progress">Card 0 of 0</p>
+            <p class="flash-label">Finnish Word</p>
+            <p id="flashWord" class="flash-word">-</p>
+            <label class="flash-input-wrap">
+              <span>Type English translation</span>
+              <input id="flashInput" type="text" autocomplete="off" />
+            </label>
+            <div class="flash-actions">
+              <button id="flashSubmitBtn" type="button">Submit</button>
+              <button id="flashSkipBtn" type="button" class="ghost">Skip</button>
+            </div>
+            <p id="flashFeedback" class="flash-feedback"></p>
+          </div>
+        </section>
+
+        <section class="help" aria-label="How to play">
+          <p>Chapter selection auto-loads immediately when changed.</p>
+          <p>Timed mode gives you 1 minute to score as many correct answers as possible.</p>
+        </section>
+      </section>
+
+      <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Settings">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h2>Settings</h2>
+            <button id="closeSettingsBtn" type="button" class="ghost">Close</button>
+          </div>
+          <section class="sync-section">
+            <h3>Sync (optional)</h3>
+            <label class="db-input">
+              <span>Player name</span>
+              <input id="playerNameInput" type="text" placeholder="e.g. shyvari" />
+            </label>
+
+            <details class="advanced">
+              <summary>Advanced</summary>
+              <div class="advanced-grid">
+                <label class="db-input db-wide">
+                  <span>Supabase URL</span>
+                  <input id="supabaseUrlInput" type="url" placeholder="https://YOUR-PROJECT.supabase.co" />
+                </label>
+                <label class="db-input db-wide">
+                  <span>Access key</span>
+                  <input id="supabaseKeyInput" type="password" placeholder="Supabase access key" />
+                </label>
+              </div>
+            </details>
+
+            <p id="syncInlineError" class="inline-error hidden"></p>
+            <div class="step-actions">
+              <button id="connectDbBtn" type="button">Connect Sync</button>
+            </div>
+            <p id="dbStatusText" class="inline-note">Sync: Not connected.</p>
+            <p id="dbStatsText" class="inline-note">Player stats: -</p>
+          </section>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>
