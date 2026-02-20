@@ -36,7 +36,6 @@
                 <span id="syncIndicatorBadge" class="status-pill offline">Offline</span>
               </div>
             </div>
-            <button id="openSettingsBtn" type="button" class="ghost">Settings</button>
           </div>
 
           <div class="scope-row">
@@ -88,7 +87,6 @@
         <span id="miniMode">Mode: -</span>
         <span id="miniTimer">Timer: Off</span>
         <span id="miniProgress">Progress: 0/0</span>
-        <button id="miniSettingsBtn" type="button" class="ghost">Settings</button>
       </div>
 
       <section id="gameplayArea" class="hidden">
@@ -143,42 +141,12 @@
         </section>
       </section>
 
-      <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Settings">
-        <div class="modal-card">
-          <div class="modal-header">
-            <h2>Settings</h2>
-            <button id="closeSettingsBtn" type="button" class="ghost">Close</button>
-          </div>
-          <section class="sync-section">
-            <h3>Sync (optional)</h3>
-            <label class="db-input">
-              <span>Player name</span>
-              <input id="playerNameInput" type="text" placeholder="e.g. shyvari" />
-            </label>
-
-            <details class="advanced">
-              <summary>Advanced</summary>
-              <div class="advanced-grid">
-                <label class="db-input db-wide">
-                  <span>Supabase URL</span>
-                  <input id="supabaseUrlInput" type="url" placeholder="https://YOUR-PROJECT.supabase.co" />
-                </label>
-                <label class="db-input db-wide">
-                  <span>Access key</span>
-                  <input id="supabaseKeyInput" type="password" placeholder="Supabase access key" />
-                </label>
-              </div>
-            </details>
-
-            <p id="syncInlineError" class="inline-error hidden"></p>
-            <div class="step-actions">
-              <button id="connectDbBtn" type="button">Connect Sync</button>
-            </div>
-            <p id="dbStatusText" class="inline-note">Sync: Not connected.</p>
-            <p id="dbStatsText" class="inline-note">Player stats: -</p>
-          </section>
-        </div>
-      </div>
+      <input id="playerNameInput" type="hidden" value="Guest" />
+      <input id="supabaseUrlInput" type="hidden" value="" />
+      <input id="supabaseKeyInput" type="hidden" value="" />
+      <p id="syncInlineError" class="inline-error hidden"></p>
+      <p id="dbStatusText" class="inline-note hidden">Sync: Not connected.</p>
+      <p id="dbStatsText" class="inline-note hidden">Player stats: -</p>
     </main>
   </body>
 </html>

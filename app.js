@@ -1,7 +1,9 @@
 const DEFAULT_CHAPTER = "General";
-const DB_CONFIG_STORAGE_KEY = "finnish_trainer_supabase_config_v1";
 const PRACTICE_PREF_STORAGE_KEY = "finnish_trainer_practice_prefs_v1";
 const CHAPTER_CACHE_STORAGE_KEY = "finnish_trainer_chapter_cache_v1";
+const LOCAL_PROGRESS_STORAGE_KEY = "finnish_trainer_local_progress_v1";
+const SUPABASE_URL = "https://qxcoyrlosrijnvehcjir.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_77PTSjdf9M4Wn_ycuRAZlA__JMJNHuf";
 
 const timedToggle = document.getElementById("timedToggle");
 const modeButtons = [...document.querySelectorAll(".mode-btn")];
@@ -46,7 +48,6 @@ const miniProgress = document.getElementById("miniProgress");
 const supabaseUrlInput = document.getElementById("supabaseUrlInput");
 const supabaseKeyInput = document.getElementById("supabaseKeyInput");
 const playerNameInput = document.getElementById("playerNameInput");
-const connectDbBtn = document.getElementById("connectDbBtn");
 const chapterSelect = document.getElementById("chapterSelect");
 const dbStatusText = document.getElementById("dbStatusText");
 const dbStatsText = document.getElementById("dbStatsText");
@@ -128,70 +129,35 @@ if (flashInput) {
     }
   });
 }
-if (connectDbBtn) {
-  connectDbBtn.addEventListener("click", connectToSupabase);
-}
-if (openSettingsBtn) {
-  openSettingsBtn.addEventListener("click", openSettingsModal);
-}
-if (miniSettingsBtn) {
-  miniSettingsBtn.addEventListener("click", openSettingsModal);
-}
-if (closeSettingsBtn) {
-  closeSettingsBtn.addEventListener("click", closeSettingsModal);
-}
-if (settingsModal) {
-  settingsModal.addEventListener("click", (event) => {
-    if (event.target === settingsModal) {
-      closeSettingsModal();
-    }
-  });
-}
-if (playerNameInput) {
-  playerNameInput.addEventListener("change", () => {
-    persistDbConfigToStorage();
-    updateQuickStartCard();
-    if (state.db.connected) {
-      void refreshPlayerStats();
-      if (state.scope === "chapter" && state.selectedChapter) {
-        void loadChapterMetadata(state.selectedChapter);
-      }
-    }
-  });
-}
 window.addEventListener("resize", syncAllLines);
 
-hydrateDbConfigFromStorage();
+applyFixedDbConfig();
 hydratePracticePrefsFromStorage();
 resetChapterControls();
 hydrateChapterCacheFromStorage();
 applyPracticeScope();
 updateQuickStartCard();
 setStatus("Choose scope and press Start.");
-setDbStatus("Sync: Offline.");
+setDbStatus("Sync: Connecting...");
 updateScore();
 updateTimerDisplay();
 updateReadySummary();
 updateMiniBar();
+void refreshPlayerStats();
 if (state.scope === "chapter" && state.selectedChapter) {
   void loadChapterMetadata(state.selectedChapter);
 }
 void initializePracticePage();
 
 async function initializePracticePage() {
-  if (!hasStoredDbConfig()) {
-    return;
-  }
-
-  await autoConnectFromStoredConfig();
+  await autoConnectWithFixedConfig();
 }
 
 async function startPractice() {
   clearScopeError();
 
   if (!state.db.connected) {
-    setScopeError("Sync is offline. Open Settings and connect Sync first.");
-    openSettingsModal();
+    setScopeError("Word database is offline. Please try again in a moment.");
     return;
   }
 
@@ -874,11 +840,15 @@ function clearSyncError() {
 }
 
 function openSettingsModal() {
-  settingsModal.classList.remove("hidden");
+  if (settingsModal) {
+    settingsModal.classList.remove("hidden");
+  }
 }
 
 function closeSettingsModal() {
-  settingsModal.classList.add("hidden");
+  if (settingsModal) {
+    settingsModal.classList.add("hidden");
+  }
 }
 
 function applyPracticeScope() {
@@ -911,40 +881,13 @@ async function loadChapterMetadata(chapter) {
 
   const chapterInfo = state.chapterCatalog.find((item) => item.chapter === chapter);
   const wordCount = chapterInfo?.count ?? 0;
-  const playerName = getPlayerName();
-
-  if (!state.db.connected || !playerName) {
-    chapterMetaText.textContent = `Words: ${wordCount} | Last practiced: - | Accuracy: -`;
-    chapterMetaText.classList.remove("hidden");
-    return;
-  }
-
-  const { data, error } = await state.db.client
-    .from("progress_sessions")
-    .select("completed_at, correct_count, attempts_count")
-    .eq("user_name", playerName)
-    .eq("chapter", chapter)
-    .order("completed_at", { ascending: false })
-    .limit(200);
-
-  if (error) {
-    chapterMetaText.textContent = `Words: ${wordCount} | Last practiced: - | Accuracy: -`;
-    chapterMetaText.classList.remove("hidden");
-    return;
-  }
-
-  const lastPracticed = data?.[0]?.completed_at ? formatDate(data[0].completed_at) : "-";
-  const totalAttempts = (data || []).reduce((sum, row) => sum + (row.attempts_count || 0), 0);
-  const totalCorrect = (data || []).reduce((sum, row) => sum + (row.correct_count || 0), 0);
-  const accuracy = totalAttempts > 0 ? `${Math.round((totalCorrect / totalAttempts) * 100)}%` : "-";
-
-  chapterMetaText.textContent = `Words: ${wordCount} | Last practiced: ${lastPracticed} | Accuracy: ${accuracy}`;
+  chapterMetaText.textContent = `Words: ${wordCount} | Last practiced: Local only | Accuracy: Local only`;
   chapterMetaText.classList.remove("hidden");
 }
 
 async function loadWordsForActiveScope() {
   if (!state.db.connected) {
-    setScopeError("Sync is offline. Open Settings and connect Sync first.");
+    setScopeError("Word database is offline. Please try again in a moment.");
     return null;
   }
 
@@ -1045,62 +988,20 @@ function resizeLineLayer() {
   lineLayer.setAttribute("viewBox", `0 0 ${board.clientWidth} ${board.clientHeight}`);
 }
 
-async function connectToSupabase() {
-  clearSyncError();
-  const url = supabaseUrlInput.value.trim();
-  const anonKey = supabaseKeyInput.value.trim();
-
-  if (!url || !anonKey) {
-    setSyncError("Enter Supabase URL and Access key in Advanced.");
-    return;
-  }
-
+async function autoConnectWithFixedConfig() {
   if (typeof supabase === "undefined" || typeof supabase.createClient !== "function") {
-    setSyncError("Supabase client did not load. Refresh the page.");
+    setDbStatus("Sync: Offline (client failed to load).");
     return;
   }
 
-  const client = supabase.createClient(url, anonKey);
-  const { error } = await client.from("words").select("id").limit(1);
-
-  if (error) {
-    setSyncError(`Sync connection failed: ${error.message}`);
-    setDbStatus("Sync: Offline.", true);
-    return;
-  }
-
-  state.db.client = client;
-  state.db.connected = true;
-  persistDbConfigToStorage();
-  updateQuickStartCard();
-  clearScopeError();
-  await fetchChapters();
-  await refreshPlayerStats();
-  setDbStatus("Sync: Synced.");
-  if (state.scope === "chapter" && state.selectedChapter) {
-    await loadChapterMetadata(state.selectedChapter);
-  }
-  closeSettingsModal();
-}
-
-async function autoConnectFromStoredConfig() {
-  if (!hasStoredDbConfig()) {
-    return;
-  }
-
-  if (typeof supabase === "undefined" || typeof supabase.createClient !== "function") {
-    setDbStatus("Sync: Offline.");
-    return;
-  }
-
-  const client = supabase.createClient(supabaseUrlInput.value.trim(), supabaseKeyInput.value.trim());
+  const client = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
   const { error } = await client.from("words").select("id").limit(1);
 
   if (error) {
     state.db.connected = false;
     state.db.client = null;
     updateQuickStartCard();
-    setDbStatus("Sync: Offline.");
+    setDbStatus(`Sync: Offline (${error.message}).`, true);
     return;
   }
 
@@ -1109,15 +1010,10 @@ async function autoConnectFromStoredConfig() {
   updateQuickStartCard();
   clearScopeError();
   await fetchChapters();
-  await refreshPlayerStats();
   setDbStatus("Sync: Synced.");
   if (state.scope === "chapter" && state.selectedChapter) {
     await loadChapterMetadata(state.selectedChapter);
   }
-}
-
-function hasStoredDbConfig() {
-  return Boolean(supabaseUrlInput?.value?.trim() && supabaseKeyInput?.value?.trim());
 }
 
 async function fetchChapters() {
@@ -1175,178 +1071,83 @@ function resetChapterControls() {
 }
 
 async function saveProgress(roundResult) {
-  if (!state.db.connected || state.roundSaved || !state.pairs.length) {
+  if (state.roundSaved || !state.pairs.length) {
     return;
   }
 
-  const playerName = getPlayerName();
-  if (!playerName) {
-    setDbStatus("Progress not saved: enter player name.", true);
-    return;
-  }
-
-  const sessionPayload = {
-    user_name: playerName,
-    chapter: state.currentChapter,
-    mode: state.mode,
-    timed: state.timed,
-    round_result: roundResult,
-    words_in_round: state.pairs.length,
-    correct_count: state.correct,
-    attempts_count: state.attempts,
-    source: state.source,
-  };
-
-  const { data: sessionRow, error: sessionError } = await state.db.client
-    .from("progress_sessions")
-    .insert(sessionPayload)
-    .select("id")
-    .single();
-
-  if (sessionError) {
-    setDbStatus(`Progress save failed: ${sessionError.message}`, true);
-    return;
-  }
-
-  const detailRows = [...state.wordStats.values()]
-    .filter((row) => row.attempts > 0 || row.correct > 0)
-    .map((row) => ({
-      progress_session_id: sessionRow.id,
-      word_id: row.wordId,
-      chapter: row.chapter,
-      finnish: row.finnish,
-      english: row.english,
-      attempts: row.attempts,
-      correct: row.correct,
-    }));
-
-  if (detailRows.length > 0) {
-    const { error: detailError } = await state.db.client.from("progress_word_stats").insert(detailRows);
-    if (detailError) {
-      setDbStatus(`Word progress save failed: ${detailError.message}`, true);
-      return;
-    }
-  }
-
-  const userStatsSaved = await updateUserStats(playerName, state.correct, state.attempts);
-  if (!userStatsSaved) {
-    return;
-  }
-
+  persistLocalProgress(roundResult);
   state.roundSaved = true;
   await refreshPlayerStats();
-  setDbStatus("Progress saved.");
-}
-
-async function updateUserStats(playerName, correctDelta, attemptsDelta) {
-  const { data: currentStats, error: loadError } = await state.db.client
-    .from("user_stats")
-    .select("times_played, correct_guesses, total_attempts")
-    .eq("user_name", playerName)
-    .maybeSingle();
-
-  if (loadError && loadError.code !== "PGRST116") {
-    setDbStatus(`Could not update user stats: ${loadError.message}`, true);
-    return false;
-  }
-
-  const timesPlayed = (currentStats?.times_played ?? 0) + 1;
-  const correctGuesses = (currentStats?.correct_guesses ?? 0) + correctDelta;
-  const totalAttempts = (currentStats?.total_attempts ?? 0) + attemptsDelta;
-
-  const { error: upsertError } = await state.db.client.from("user_stats").upsert(
-    {
-      user_name: playerName,
-      times_played: timesPlayed,
-      correct_guesses: correctGuesses,
-      total_attempts: totalAttempts,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_name" },
-  );
-
-  if (upsertError) {
-    setDbStatus(`Could not save user stats: ${upsertError.message}`, true);
-    return false;
-  }
-
-  return true;
+  setDbStatus("Sync: Synced. Progress saved locally.");
 }
 
 async function refreshPlayerStats() {
-  if (!state.db.connected) {
-    dbStatsText.textContent = "Player stats: -";
+  if (!dbStatsText) {
     return;
   }
 
-  const playerName = getPlayerName();
-  if (!playerName) {
-    dbStatsText.textContent = "Player stats: enter player name.";
-    return;
-  }
-
-  const { data, error } = await state.db.client
-    .from("user_stats")
-    .select("times_played, correct_guesses, total_attempts")
-    .eq("user_name", playerName)
-    .maybeSingle();
-
-  if (error && error.code !== "PGRST116") {
-    dbStatsText.textContent = "Player stats: unavailable.";
-    setDbStatus(`Could not load player stats: ${error.message}`, true);
-    return;
-  }
-
-  const plays = data?.times_played ?? 0;
-  const correct = data?.correct_guesses ?? 0;
-  const attempts = data?.total_attempts ?? 0;
-  dbStatsText.textContent = `Player stats (${playerName}): ${plays} plays, ${correct} correct, ${attempts} attempts`;
+  const localStats = readLocalProgress();
+  dbStatsText.textContent = `Player stats (local): ${localStats.timesPlayed} plays, ${localStats.correctGuesses} correct, ${localStats.totalAttempts} attempts`;
 }
 
 function getPlayerName() {
-  return String(playerNameInput?.value || "").trim();
+  return String(playerNameInput?.value || "Guest").trim() || "Guest";
 }
 
-function persistDbConfigToStorage() {
-  if (!supabaseUrlInput || !supabaseKeyInput || !playerNameInput) {
-    return;
+function applyFixedDbConfig() {
+  if (supabaseUrlInput) {
+    supabaseUrlInput.value = SUPABASE_URL;
   }
-
-  try {
-    const payload = {
-      url: supabaseUrlInput.value.trim(),
-      anonKey: supabaseKeyInput.value.trim(),
-      playerName: getPlayerName(),
-    };
-    localStorage.setItem(DB_CONFIG_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore storage errors in restricted browsers.
+  if (supabaseKeyInput) {
+    supabaseKeyInput.value = SUPABASE_PUBLISHABLE_KEY;
+  }
+  if (playerNameInput) {
+    playerNameInput.value = "Guest";
   }
 }
 
-function hydrateDbConfigFromStorage() {
-  if (!supabaseUrlInput || !supabaseKeyInput || !playerNameInput) {
-    return;
-  }
-
+function readLocalProgress() {
   try {
-    const raw = localStorage.getItem(DB_CONFIG_STORAGE_KEY);
+    const raw = localStorage.getItem(LOCAL_PROGRESS_STORAGE_KEY);
     if (!raw) {
-      return;
+      return { timesPlayed: 0, correctGuesses: 0, totalAttempts: 0, sessions: [] };
     }
 
     const parsed = JSON.parse(raw);
-    if (parsed.url) {
-      supabaseUrlInput.value = parsed.url;
-    }
-    if (parsed.anonKey) {
-      supabaseKeyInput.value = parsed.anonKey;
-    }
-    if (parsed.playerName) {
-      playerNameInput.value = parsed.playerName;
-    }
+    return {
+      timesPlayed: Number(parsed.timesPlayed) || 0,
+      correctGuesses: Number(parsed.correctGuesses) || 0,
+      totalAttempts: Number(parsed.totalAttempts) || 0,
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+    };
   } catch {
-    // Ignore invalid JSON or unavailable storage.
+    return { timesPlayed: 0, correctGuesses: 0, totalAttempts: 0, sessions: [] };
+  }
+}
+
+function persistLocalProgress(roundResult) {
+  const progress = readLocalProgress();
+  const session = {
+    completedAt: new Date().toISOString(),
+    chapter: state.currentChapter,
+    mode: state.mode,
+    timed: state.timed,
+    roundResult,
+    wordsInRound: state.pairs.length,
+    correctCount: state.correct,
+    attemptsCount: state.attempts,
+  };
+
+  progress.timesPlayed += 1;
+  progress.correctGuesses += state.correct;
+  progress.totalAttempts += state.attempts;
+  progress.sessions.unshift(session);
+  progress.sessions = progress.sessions.slice(0, 100);
+
+  try {
+    localStorage.setItem(LOCAL_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    setDbStatus("Sync: Synced. Could not save local progress.", true);
   }
 }
 
