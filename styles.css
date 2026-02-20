@@ -120,6 +120,84 @@ body {
   border: 1px solid var(--line);
 }
 
+.quick-start-card {
+  display: grid;
+  gap: 12px;
+}
+
+.quick-start-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.quick-start-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.quick-title {
+  margin: 0;
+  font-family: "Poppins", "Segoe UI", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.quick-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-family: "Poppins", "Segoe UI", sans-serif;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid #c1cff0;
+  color: var(--primary-dark);
+  background: #fff;
+}
+
+.status-pill.source {
+  border-color: #b2c7f3;
+  background: #f7faff;
+}
+
+.status-pill.synced {
+  border-color: #9fd5b9;
+  color: #145237;
+  background: #ecf8f2;
+}
+
+.status-pill.offline {
+  border-color: #e6b8c2;
+  color: #8d2636;
+  background: #fff3f6;
+}
+
+.scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.scope-row .chapter-input {
+  min-width: 220px;
+}
+
+.quick-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 .stepper {
   list-style: none;
   margin: 0;
@@ -801,6 +879,19 @@ button.ghost:hover {
 }
 
 @media (max-width: 780px) {
+  .quick-start-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scope-row .chapter-input {
+    width: 100%;
+  }
+
+  .quick-compact {
+    align-items: stretch;
+  }
+
   .step-actions > button {
     width: 100%;
   }

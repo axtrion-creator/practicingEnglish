@@ -1,14 +1,12 @@
 const DEFAULT_CHAPTER = "General";
 const DB_CONFIG_STORAGE_KEY = "finnish_trainer_supabase_config_v1";
+const PRACTICE_PREF_STORAGE_KEY = "finnish_trainer_practice_prefs_v1";
+const CHAPTER_CACHE_STORAGE_KEY = "finnish_trainer_chapter_cache_v1";
 
-const fileInput = document.getElementById("fileInput");
 const timedToggle = document.getElementById("timedToggle");
 const modeButtons = [...document.querySelectorAll(".mode-btn")];
-const importPrimaryBtn = document.getElementById("importPrimaryBtn");
-const continueBtn = document.getElementById("continueBtn");
 const startBtn = document.getElementById("startBtn");
-const sampleBtn = document.getElementById("sampleBtn");
-const syncNowBtn = document.getElementById("syncNowBtn");
+const scopeSelect = document.getElementById("scopeSelect");
 const openSettingsBtn = document.getElementById("openSettingsBtn");
 const miniSettingsBtn = document.getElementById("miniSettingsBtn");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
@@ -16,10 +14,12 @@ const checkWriteBtn = document.getElementById("checkWriteBtn");
 const flashSubmitBtn = document.getElementById("flashSubmitBtn");
 const flashSkipBtn = document.getElementById("flashSkipBtn");
 const flashInput = document.getElementById("flashInput");
-const fileInlineError = document.getElementById("fileInlineError");
-const chapterInlineError = document.getElementById("chapterInlineError");
+const scopeInlineError = document.getElementById("scopeInlineError");
+const chapterMetaText = document.getElementById("chapterMetaText");
 const syncInlineError = document.getElementById("syncInlineError");
 const readySummaryText = document.getElementById("readySummaryText");
+const activePlayerBadge = document.getElementById("activePlayerBadge");
+const syncIndicatorBadge = document.getElementById("syncIndicatorBadge");
 const statusText = document.getElementById("statusText");
 const scoreText = document.getElementById("scoreText");
 const timerText = document.getElementById("timerText");
@@ -42,14 +42,11 @@ const miniChapter = document.getElementById("miniChapter");
 const miniMode = document.getElementById("miniMode");
 const miniTimer = document.getElementById("miniTimer");
 const miniProgress = document.getElementById("miniProgress");
-const stepItems = [...document.querySelectorAll(".step")];
-const stepPanels = [...document.querySelectorAll(".step-panel")];
 
 const supabaseUrlInput = document.getElementById("supabaseUrlInput");
 const supabaseKeyInput = document.getElementById("supabaseKeyInput");
 const playerNameInput = document.getElementById("playerNameInput");
 const connectDbBtn = document.getElementById("connectDbBtn");
-const saveWordsBtn = document.getElementById("syncNowBtn");
 const chapterSelect = document.getElementById("chapterSelect");
 const dbStatusText = document.getElementById("dbStatusText");
 const dbStatsText = document.getElementById("dbStatsText");
@@ -83,13 +80,13 @@ const state = {
   correct: 0,
   attempts: 0,
   wordStats: new Map(),
-  currentChapter: "Mixed",
-  source: "local",
-  datasetLabel: "-",
-  chapterPool: [],
-  chapterLoadSource: "none",
+  currentChapter: "All words",
+  source: "database",
+  datasetLabel: "Database",
+  scope: "all",
+  selectedChapter: "",
+  chapterCatalog: [],
   roundStarted: false,
-  uiStep: 1,
   roundSaved: false,
   db: {
     client: null,
@@ -97,140 +94,154 @@ const state = {
   },
 };
 
-importPrimaryBtn.addEventListener("click", loadFromFile);
-sampleBtn.addEventListener("click", loadSampleData);
-continueBtn.addEventListener("click", () => setStep(3));
-startBtn.addEventListener("click", startPractice);
+if (startBtn) {
+  startBtn.addEventListener("click", () => {
+    void startPractice();
+  });
+}
 modeButtons.forEach((button) => {
   button.addEventListener("click", () => onModeChange(button.dataset.mode));
 });
-stepItems.forEach((item) => {
-  item.addEventListener("click", () => onStepSelect(Number(item.dataset.step)));
-  item.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
+if (scopeSelect) {
+  scopeSelect.addEventListener("change", onScopeChange);
+}
+if (timedToggle) {
+  timedToggle.addEventListener("change", onTimedToggle);
+}
+if (chapterSelect) {
+  chapterSelect.addEventListener("change", onChapterSelectionChange);
+}
+if (checkWriteBtn) {
+  checkWriteBtn.addEventListener("click", () => submitWriteAnswers(false));
+}
+if (flashSubmitBtn) {
+  flashSubmitBtn.addEventListener("click", submitFlashAnswer);
+}
+if (flashSkipBtn) {
+  flashSkipBtn.addEventListener("click", skipFlashCard);
+}
+if (flashInput) {
+  flashInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
       event.preventDefault();
-      onStepSelect(Number(item.dataset.step));
+      submitFlashAnswer();
     }
   });
-});
-timedToggle.addEventListener("change", onTimedToggle);
-chapterSelect.addEventListener("change", handleChapterLoad);
-checkWriteBtn.addEventListener("click", () => submitWriteAnswers(false));
-flashSubmitBtn.addEventListener("click", submitFlashAnswer);
-flashSkipBtn.addEventListener("click", skipFlashCard);
-flashInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    submitFlashAnswer();
-  }
-});
-connectDbBtn.addEventListener("click", connectToSupabase);
-saveWordsBtn.addEventListener("click", saveCurrentWordsToDb);
-openSettingsBtn.addEventListener("click", openSettingsModal);
-miniSettingsBtn.addEventListener("click", openSettingsModal);
-closeSettingsBtn.addEventListener("click", closeSettingsModal);
-settingsModal.addEventListener("click", (event) => {
-  if (event.target === settingsModal) {
-    closeSettingsModal();
-  }
-});
-playerNameInput.addEventListener("change", () => {
-  persistDbConfigToStorage();
-  if (state.db.connected) {
-    void refreshPlayerStats();
-  }
-});
+}
+if (connectDbBtn) {
+  connectDbBtn.addEventListener("click", connectToSupabase);
+}
+if (openSettingsBtn) {
+  openSettingsBtn.addEventListener("click", openSettingsModal);
+}
+if (miniSettingsBtn) {
+  miniSettingsBtn.addEventListener("click", openSettingsModal);
+}
+if (closeSettingsBtn) {
+  closeSettingsBtn.addEventListener("click", closeSettingsModal);
+}
+if (settingsModal) {
+  settingsModal.addEventListener("click", (event) => {
+    if (event.target === settingsModal) {
+      closeSettingsModal();
+    }
+  });
+}
+if (playerNameInput) {
+  playerNameInput.addEventListener("change", () => {
+    persistDbConfigToStorage();
+    updateQuickStartCard();
+    if (state.db.connected) {
+      void refreshPlayerStats();
+      if (state.scope === "chapter" && state.selectedChapter) {
+        void loadChapterMetadata(state.selectedChapter);
+      }
+    }
+  });
+}
 window.addEventListener("resize", syncAllLines);
 
 hydrateDbConfigFromStorage();
+hydratePracticePrefsFromStorage();
 resetChapterControls();
-updateSaveButtonState();
-setStep(1);
-setStatus("Import a word set to begin.");
-setDbStatus("Sync: Not connected.");
+hydrateChapterCacheFromStorage();
+applyPracticeScope();
+updateQuickStartCard();
+setStatus("Choose scope and press Start.");
+setDbStatus("Sync: Offline.");
 updateScore();
 updateTimerDisplay();
 updateReadySummary();
 updateMiniBar();
+if (state.scope === "chapter" && state.selectedChapter) {
+  void loadChapterMetadata(state.selectedChapter);
+}
+void initializePracticePage();
 
-async function loadFromFile() {
-  clearFileError();
-  const file = fileInput.files?.[0];
-
-  if (!file) {
-    setFileError("Choose an Excel or CSV file first.");
+async function initializePracticePage() {
+  if (!hasStoredDbConfig()) {
     return;
   }
 
-  if (typeof XLSX === "undefined") {
-    setFileError("Excel parser did not load. Check your internet connection and refresh.");
-    return;
-  }
-
-  try {
-    const buffer = await file.arrayBuffer();
-    const pairs = parsePairsFromWorkbook(buffer);
-    state.datasetLabel = file.name;
-    setPairsAndStart(pairs, { source: "file" });
-    setStep(2);
-    updateReadySummary();
-
-    const chapterCount = new Set(pairs.map((pair) => pair.chapter)).size;
-    setStatus(`Loaded ${pairs.length} words from ${file.name} (${chapterCount} chapters).`);
-  } catch (error) {
-    setFileError(error.message || "Could not read that file.");
-  }
+  await autoConnectFromStoredConfig();
 }
 
-function loadSampleData() {
-  clearFileError();
-  const samplePairs = [
-    { finnish: "kissa", english: "cat", chapter: "Animals" },
-    { finnish: "koira", english: "dog", chapter: "Animals" },
-    { finnish: "vesi", english: "water", chapter: "Nature" },
-    { finnish: "koulu", english: "school", chapter: "Daily life" },
-    { finnish: "koti", english: "home", chapter: "Daily life" },
-    { finnish: "aurinko", english: "sun", chapter: "Nature" },
-    { finnish: "sydan", english: "heart", chapter: "Health" },
-    { finnish: "kirja", english: "book", chapter: "Daily life" },
-  ];
+async function startPractice() {
+  clearScopeError();
 
-  state.datasetLabel = "Sample set";
-  setPairsAndStart(samplePairs, { source: "sample" });
-  setStep(2);
-  updateReadySummary();
-  setStatus("Loaded sample words.");
-}
-
-function onStepSelect(stepNumber) {
-  if (stepNumber === 1) {
-    setStep(1);
+  if (!state.db.connected) {
+    setScopeError("Sync is offline. Open Settings and connect Sync first.");
+    openSettingsModal();
     return;
   }
 
-  if (!state.rawPairs.length) {
-    setStep(1);
-    setFileError("Import a word set first.");
+  if (state.scope === "chapter" && !state.selectedChapter) {
+    setScopeError("Choose a chapter before starting.");
     return;
   }
 
-  setStep(stepNumber === 2 ? 2 : 3);
-}
-
-function startPractice() {
-  clearChapterError();
-  if (!state.rawPairs.length) {
-    setFileError("Import a word set first.");
+  const words = await loadWordsForActiveScope();
+  if (!words) {
     return;
   }
 
   state.roundStarted = true;
-  setStep(3);
+  state.source = "database";
+  state.datasetLabel = "Database";
+  state.rawPairs = words;
+  state.currentChapter = state.scope === "chapter" ? state.selectedChapter : "All words";
+
   gameplayArea.classList.remove("hidden");
   miniBar.classList.remove("hidden");
   startRound();
   updateMiniBar();
-  setStatus("Round started.");
+  setStatus(`Started with ${state.rawPairs.length} words from ${state.currentChapter}.`);
+}
+
+function onScopeChange() {
+  clearScopeError();
+  state.scope = scopeSelect.value === "chapter" ? "chapter" : "all";
+  applyPracticeScope();
+  persistPracticePrefsToStorage();
+
+  if (state.scope === "chapter" && state.selectedChapter) {
+    void loadChapterMetadata(state.selectedChapter);
+  } else {
+    hideChapterMetadata();
+  }
+}
+
+function onChapterSelectionChange() {
+  clearScopeError();
+  state.selectedChapter = chapterSelect.value || "";
+  persistPracticePrefsToStorage();
+
+  if (state.scope === "chapter" && state.selectedChapter) {
+    void loadChapterMetadata(state.selectedChapter);
+    return;
+  }
+
+  hideChapterMetadata();
 }
 
 function onModeChange(mode) {
@@ -260,45 +271,6 @@ function onTimedToggle() {
   } else {
     updateTimerDisplay();
   }
-}
-
-function setPairsAndStart(rawPairs, options = {}) {
-  const cleanedPairs = rawPairs
-    .map((pair) => ({
-      wordId: pair.wordId ?? pair.id ?? null,
-      finnish: String(pair.finnish ?? "").trim(),
-      english: String(pair.english ?? "").trim(),
-      chapter: normalizeChapter(pair.chapter),
-    }))
-    .filter((pair) => pair.finnish && pair.english);
-
-  if (cleanedPairs.length < 2) {
-    setFileError("Need at least 2 valid word rows.");
-    return;
-  }
-
-  const chapterLoadSource =
-    options.chapterLoadSource || (options.source === "database" ? "database" : "local");
-  const chapterPool = options.chapterPool || cleanedPairs;
-
-  state.rawPairs = cleanedPairs;
-  state.source = options.source || "local";
-  state.currentChapter = options.chapterLabel || deriveChapterLabel(cleanedPairs);
-  state.chapterPool = chapterPool;
-  updateSaveButtonState();
-
-  if (chapterLoadSource === "local") {
-    const localChapters = getChaptersFromPairs(chapterPool);
-    populateChapterSelect(localChapters, "local");
-  } else {
-    state.chapterLoadSource = "database";
-  }
-
-  if (state.roundStarted) {
-    startRound();
-  }
-  updateReadySummary();
-  updateMiniBar();
 }
 
 function startRound() {
@@ -816,20 +788,14 @@ function setStatus(message, isError = false) {
 
 function setDbStatus(message, isError = false) {
   dbStatusText.textContent = message;
-  dbStatusText.classList.toggle("error", false);
-  if (isError) {
-    setSyncError(message);
+  dbStatusText.classList.toggle("error", isError);
+  updateQuickStartCard();
+  if (!isError) {
+    clearSyncError();
+    return;
   }
-}
 
-function setStep(stepNumber) {
-  state.uiStep = stepNumber;
-  stepItems.forEach((item) => {
-    item.classList.toggle("active", Number(item.dataset.step) === stepNumber);
-  });
-  stepPanels.forEach((panel, index) => {
-    panel.classList.toggle("hidden", index + 1 !== stepNumber);
-  });
+  setSyncError(message);
 }
 
 function updateReadySummary() {
@@ -838,7 +804,7 @@ function updateReadySummary() {
   }
 
   if (!state.rawPairs.length) {
-    readySummaryText.textContent = "Import a dataset first.";
+    readySummaryText.textContent = "Choose scope and press Start.";
     return;
   }
 
@@ -861,36 +827,34 @@ function getModeLabel(mode) {
   return MODE_LABELS[mode] || mode || "-";
 }
 
-function setFileError(message) {
-  if (!fileInlineError) {
-    return;
+function updateQuickStartCard() {
+  if (activePlayerBadge) {
+    activePlayerBadge.textContent = `Player: ${getPlayerName() || "-"}`;
   }
-  fileInlineError.textContent = message;
-  fileInlineError.classList.remove("hidden");
+
+  if (syncIndicatorBadge) {
+    syncIndicatorBadge.textContent = state.db.connected ? "Synced" : "Offline";
+    syncIndicatorBadge.classList.toggle("synced", state.db.connected);
+    syncIndicatorBadge.classList.toggle("offline", !state.db.connected);
+  }
 }
 
-function clearFileError() {
-  if (!fileInlineError) {
+function setScopeError(message) {
+  if (!scopeInlineError) {
     return;
   }
-  fileInlineError.textContent = "";
-  fileInlineError.classList.add("hidden");
+
+  scopeInlineError.textContent = message;
+  scopeInlineError.classList.remove("hidden");
 }
 
-function setChapterError(message) {
-  if (!chapterInlineError) {
+function clearScopeError() {
+  if (!scopeInlineError) {
     return;
   }
-  chapterInlineError.textContent = message;
-  chapterInlineError.classList.remove("hidden");
-}
 
-function clearChapterError() {
-  if (!chapterInlineError) {
-    return;
-  }
-  chapterInlineError.textContent = "";
-  chapterInlineError.classList.add("hidden");
+  scopeInlineError.textContent = "";
+  scopeInlineError.classList.add("hidden");
 }
 
 function setSyncError(message) {
@@ -917,6 +881,111 @@ function closeSettingsModal() {
   settingsModal.classList.add("hidden");
 }
 
+function applyPracticeScope() {
+  if (!scopeSelect || !chapterSelect) {
+    return;
+  }
+
+  scopeSelect.value = state.scope;
+  const needsChapter = state.scope === "chapter";
+  chapterSelect.disabled = !needsChapter || state.chapterCatalog.length === 0;
+
+  if (!needsChapter) {
+    hideChapterMetadata();
+  }
+}
+
+function hideChapterMetadata() {
+  if (!chapterMetaText) {
+    return;
+  }
+
+  chapterMetaText.textContent = "";
+  chapterMetaText.classList.add("hidden");
+}
+
+async function loadChapterMetadata(chapter) {
+  if (!chapter || !chapterMetaText) {
+    return;
+  }
+
+  const chapterInfo = state.chapterCatalog.find((item) => item.chapter === chapter);
+  const wordCount = chapterInfo?.count ?? 0;
+  const playerName = getPlayerName();
+
+  if (!state.db.connected || !playerName) {
+    chapterMetaText.textContent = `Words: ${wordCount} | Last practiced: - | Accuracy: -`;
+    chapterMetaText.classList.remove("hidden");
+    return;
+  }
+
+  const { data, error } = await state.db.client
+    .from("progress_sessions")
+    .select("completed_at, correct_count, attempts_count")
+    .eq("user_name", playerName)
+    .eq("chapter", chapter)
+    .order("completed_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    chapterMetaText.textContent = `Words: ${wordCount} | Last practiced: - | Accuracy: -`;
+    chapterMetaText.classList.remove("hidden");
+    return;
+  }
+
+  const lastPracticed = data?.[0]?.completed_at ? formatDate(data[0].completed_at) : "-";
+  const totalAttempts = (data || []).reduce((sum, row) => sum + (row.attempts_count || 0), 0);
+  const totalCorrect = (data || []).reduce((sum, row) => sum + (row.correct_count || 0), 0);
+  const accuracy = totalAttempts > 0 ? `${Math.round((totalCorrect / totalAttempts) * 100)}%` : "-";
+
+  chapterMetaText.textContent = `Words: ${wordCount} | Last practiced: ${lastPracticed} | Accuracy: ${accuracy}`;
+  chapterMetaText.classList.remove("hidden");
+}
+
+async function loadWordsForActiveScope() {
+  if (!state.db.connected) {
+    setScopeError("Sync is offline. Open Settings and connect Sync first.");
+    return null;
+  }
+
+  let query = state.db.client
+    .from("words")
+    .select("id, chapter, finnish, english")
+    .order("chapter", { ascending: true })
+    .order("finnish", { ascending: true });
+
+  if (state.scope === "chapter") {
+    query = query.eq("chapter", state.selectedChapter);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    setScopeError(`Could not load words: ${error.message}`);
+    return null;
+  }
+
+  if (!data || data.length < 2) {
+    setScopeError("Selected scope has too few words (need at least 2).");
+    return null;
+  }
+
+  return data.map((row) => ({
+    wordId: row.id,
+    chapter: normalizeChapter(row.chapter),
+    finnish: row.finnish,
+    english: row.english,
+  }));
+}
+
+function formatDate(isoDate) {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "numeric" });
+}
+
 function getModeIntroText() {
   if (state.mode === MODES.WRITE) {
     return "Write English translation for each Finnish word, then check answers.";
@@ -938,20 +1007,6 @@ function setActiveModeButton(mode) {
   modeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === mode);
   });
-}
-
-function deriveChapterLabel(pairs) {
-  const chapters = [...new Set(pairs.map((pair) => normalizeChapter(pair.chapter)))];
-  if (chapters.length === 1) {
-    return chapters[0];
-  }
-  return "Mixed";
-}
-
-function getChaptersFromPairs(pairs) {
-  return [...new Set((pairs || []).map((pair) => normalizeChapter(pair.chapter)))].sort((a, b) =>
-    a.localeCompare(b, "en", { sensitivity: "base" }),
-  );
 }
 
 function normalizeChapter(value) {
@@ -994,15 +1049,9 @@ async function connectToSupabase() {
   clearSyncError();
   const url = supabaseUrlInput.value.trim();
   const anonKey = supabaseKeyInput.value.trim();
-  const playerName = getPlayerName();
 
   if (!url || !anonKey) {
     setSyncError("Enter Supabase URL and Access key in Advanced.");
-    return;
-  }
-
-  if (!playerName) {
-    setSyncError("Enter player name first.");
     return;
   }
 
@@ -1016,18 +1065,59 @@ async function connectToSupabase() {
 
   if (error) {
     setSyncError(`Sync connection failed: ${error.message}`);
+    setDbStatus("Sync: Offline.", true);
     return;
   }
 
   state.db.client = client;
   state.db.connected = true;
   persistDbConfigToStorage();
-  updateSaveButtonState();
-
+  updateQuickStartCard();
+  clearScopeError();
   await fetchChapters();
   await refreshPlayerStats();
-  setDbStatus("Sync connected.");
+  setDbStatus("Sync: Synced.");
+  if (state.scope === "chapter" && state.selectedChapter) {
+    await loadChapterMetadata(state.selectedChapter);
+  }
   closeSettingsModal();
+}
+
+async function autoConnectFromStoredConfig() {
+  if (!hasStoredDbConfig()) {
+    return;
+  }
+
+  if (typeof supabase === "undefined" || typeof supabase.createClient !== "function") {
+    setDbStatus("Sync: Offline.");
+    return;
+  }
+
+  const client = supabase.createClient(supabaseUrlInput.value.trim(), supabaseKeyInput.value.trim());
+  const { error } = await client.from("words").select("id").limit(1);
+
+  if (error) {
+    state.db.connected = false;
+    state.db.client = null;
+    updateQuickStartCard();
+    setDbStatus("Sync: Offline.");
+    return;
+  }
+
+  state.db.client = client;
+  state.db.connected = true;
+  updateQuickStartCard();
+  clearScopeError();
+  await fetchChapters();
+  await refreshPlayerStats();
+  setDbStatus("Sync: Synced.");
+  if (state.scope === "chapter" && state.selectedChapter) {
+    await loadChapterMetadata(state.selectedChapter);
+  }
+}
+
+function hasStoredDbConfig() {
+  return Boolean(supabaseUrlInput?.value?.trim() && supabaseKeyInput?.value?.trim());
 }
 
 async function fetchChapters() {
@@ -1041,155 +1131,47 @@ async function fetchChapters() {
     return;
   }
 
-  const unique = [...new Set((data || []).map((row) => normalizeChapter(row.chapter)))];
-  if (state.chapterLoadSource !== "local" || !state.chapterPool.length) {
-    populateChapterSelect(unique, "database");
-  }
+  const chapterCounts = new Map();
+  (data || []).forEach((row) => {
+    const chapter = normalizeChapter(row.chapter);
+    chapterCounts.set(chapter, (chapterCounts.get(chapter) || 0) + 1);
+  });
+
+  state.chapterCatalog = [...chapterCounts.entries()]
+    .map(([chapter, count]) => ({ chapter, count }))
+    .sort((a, b) => a.chapter.localeCompare(b.chapter, "en", { sensitivity: "base" }));
+
+  populateChapterSelect(state.chapterCatalog);
+  applyPracticeScope();
+  persistChapterCacheToStorage();
 }
 
-function populateChapterSelect(chapters, source) {
-  const previous = chapterSelect.value || "__all__";
+function populateChapterSelect(catalog) {
+  const previous = state.selectedChapter || "";
   chapterSelect.innerHTML = "";
 
-  const allOption = document.createElement("option");
-  allOption.value = "__all__";
-  allOption.textContent = "All chapters";
-  chapterSelect.appendChild(allOption);
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select chapter";
+  chapterSelect.appendChild(placeholder);
 
-  chapters.forEach((chapter) => {
+  catalog.forEach((item) => {
     const option = document.createElement("option");
-    option.value = chapter;
-    option.textContent = chapter;
+    option.value = item.chapter;
+    option.textContent = `${item.chapter} (${item.count})`;
     chapterSelect.appendChild(option);
   });
 
-  state.chapterLoadSource = source || state.chapterLoadSource || "none";
-  chapterSelect.value = chapters.includes(previous) || previous === "__all__" ? previous : "__all__";
-  chapterSelect.disabled = chapters.length === 0 && !state.chapterPool.length;
+  const chapters = catalog.map((item) => item.chapter);
+  chapterSelect.value = chapters.includes(previous) ? previous : "";
+  state.selectedChapter = chapterSelect.value || "";
 }
 
 function resetChapterControls() {
-  chapterSelect.innerHTML = '<option value="__all__">All chapters</option>';
-  chapterSelect.value = "__all__";
+  chapterSelect.innerHTML = '<option value="">Select chapter</option>';
+  chapterSelect.value = "";
   chapterSelect.disabled = true;
-  state.chapterLoadSource = "none";
-}
-
-function handleChapterLoad() {
-  if (state.chapterLoadSource === "local") {
-    loadLocalChapterWords();
-    return;
-  }
-
-  void loadChapterWordsFromDb();
-}
-
-function loadLocalChapterWords() {
-  clearChapterError();
-  const selectedChapter = chapterSelect.value || "__all__";
-  if (!state.chapterPool.length) {
-    setChapterError("No imported words available for chapter filtering.");
-    return;
-  }
-
-  const filtered =
-    selectedChapter === "__all__"
-      ? [...state.chapterPool]
-      : state.chapterPool.filter((pair) => normalizeChapter(pair.chapter) === selectedChapter);
-
-  if (filtered.length < 2) {
-    setChapterError("Selected chapter has too few words (need at least 2).");
-    return;
-  }
-
-  const chapterLabel = selectedChapter === "__all__" ? "All chapters" : selectedChapter;
-  setPairsAndStart(filtered, {
-    source: state.source,
-    chapterLabel,
-    chapterLoadSource: "local",
-    chapterPool: state.chapterPool,
-  });
-  setStatus(`Loaded ${filtered.length} words from ${chapterLabel}.`);
-}
-
-async function loadChapterWordsFromDb() {
-  clearChapterError();
-  if (!state.db.connected) {
-    setChapterError("Connect Sync in Settings first.");
-    return;
-  }
-
-  const selectedChapter = chapterSelect.value || "__all__";
-  let query = state.db.client
-    .from("words")
-    .select("id, chapter, finnish, english")
-    .order("chapter", { ascending: true })
-    .order("finnish", { ascending: true });
-
-  if (selectedChapter !== "__all__") {
-    query = query.eq("chapter", selectedChapter);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    setChapterError(`Could not load chapter: ${error.message}`);
-    return;
-  }
-
-  if (!data || data.length < 2) {
-    setChapterError("Selected chapter has too few words (need at least 2).");
-    return;
-  }
-
-  const pairs = data.map((row) => ({
-    wordId: row.id,
-    chapter: normalizeChapter(row.chapter),
-    finnish: row.finnish,
-    english: row.english,
-  }));
-
-  const chapterLabel = selectedChapter === "__all__" ? "All chapters" : selectedChapter;
-  setPairsAndStart(pairs, { source: "database", chapterLabel, chapterLoadSource: "database" });
-  setStatus(`Loaded ${pairs.length} words from ${chapterLabel}.`);
-}
-
-async function saveCurrentWordsToDb() {
-  clearSyncError();
-  if (!state.rawPairs.length) {
-    setFileError("Import words first.");
-    return;
-  }
-
-  if (!state.db.connected) {
-    openSettingsModal();
-    setSyncError("Connect Sync first.");
-    return;
-  }
-
-  const rows = state.rawPairs.map((pair) => ({
-    chapter: normalizeChapter(pair.chapter),
-    finnish: pair.finnish,
-    english: pair.english,
-  }));
-
-  const { error } = await state.db.client
-    .from("words")
-    .upsert(rows, { onConflict: "chapter,finnish,english", ignoreDuplicates: true });
-
-  if (error) {
-    setSyncError(`Sync failed: ${error.message}`);
-    return;
-  }
-
-  await fetchChapters();
-  setDbStatus(`Synced ${rows.length} words.`);
-}
-
-function updateSaveButtonState() {
-  const hasWords = state.rawPairs.length > 0;
-  const canSync = hasWords && state.db.connected;
-  saveWordsBtn.disabled = !canSync;
-  saveWordsBtn.title = canSync ? "" : "Connect Sync in Settings and import words first";
+  state.selectedChapter = "";
 }
 
 async function saveProgress(roundResult) {
@@ -1322,10 +1304,14 @@ async function refreshPlayerStats() {
 }
 
 function getPlayerName() {
-  return String(playerNameInput.value || "").trim();
+  return String(playerNameInput?.value || "").trim();
 }
 
 function persistDbConfigToStorage() {
+  if (!supabaseUrlInput || !supabaseKeyInput || !playerNameInput) {
+    return;
+  }
+
   try {
     const payload = {
       url: supabaseUrlInput.value.trim(),
@@ -1339,6 +1325,10 @@ function persistDbConfigToStorage() {
 }
 
 function hydrateDbConfigFromStorage() {
+  if (!supabaseUrlInput || !supabaseKeyInput || !playerNameInput) {
+    return;
+  }
+
   try {
     const raw = localStorage.getItem(DB_CONFIG_STORAGE_KEY);
     if (!raw) {
@@ -1360,50 +1350,69 @@ function hydrateDbConfigFromStorage() {
   }
 }
 
-function parsePairsFromWorkbook(buffer) {
-  const workbook = XLSX.read(buffer, { type: "array" });
-  const firstSheetName = workbook.SheetNames[0];
-
-  if (!firstSheetName) {
-    throw new Error("No worksheet found in that file.");
+function persistPracticePrefsToStorage() {
+  try {
+    const payload = {
+      scope: state.scope,
+      chapter: state.selectedChapter,
+    };
+    localStorage.setItem(PRACTICE_PREF_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore storage errors in restricted browsers.
   }
-
-  const sheet = workbook.Sheets[firstSheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-  if (!rows.length) {
-    throw new Error("The first sheet is empty.");
-  }
-
-  const startIndex = looksLikeHeader(rows[0]) ? 1 : 0;
-  const pairs = [];
-
-  for (let i = startIndex; i < rows.length; i += 1) {
-    const row = rows[i] || [];
-    const finnish = String(row[0] ?? "").trim();
-    const english = String(row[1] ?? "").trim();
-    const chapter = normalizeChapter(row[2]);
-
-    if (finnish && english) {
-      pairs.push({ finnish, english, chapter });
-    }
-  }
-
-  if (pairs.length < 2) {
-    throw new Error("Need at least 2 valid rows in columns A and B.");
-  }
-
-  return pairs;
 }
 
-function looksLikeHeader(row) {
-  const first = String(row[0] ?? "").toLowerCase();
-  const second = String(row[1] ?? "").toLowerCase();
+function hydratePracticePrefsFromStorage() {
+  try {
+    const raw = localStorage.getItem(PRACTICE_PREF_STORAGE_KEY);
+    if (!raw) {
+      state.scope = "all";
+      state.selectedChapter = "";
+      return;
+    }
 
-  const leftHeader = ["finnish", "suomi", "finnish word", "finnish words"];
-  const rightHeader = ["english", "translation", "english word", "english words"];
+    const parsed = JSON.parse(raw);
+    state.scope = parsed.scope === "chapter" ? "chapter" : "all";
+    state.selectedChapter = String(parsed.chapter || "");
+  } catch {
+    state.scope = "all";
+    state.selectedChapter = "";
+  }
+}
 
-  return leftHeader.some((text) => first.includes(text)) && rightHeader.some((text) => second.includes(text));
+function persistChapterCacheToStorage() {
+  try {
+    localStorage.setItem(CHAPTER_CACHE_STORAGE_KEY, JSON.stringify(state.chapterCatalog));
+  } catch {
+    // Ignore storage errors in restricted browsers.
+  }
+}
+
+function hydrateChapterCacheFromStorage() {
+  try {
+    const raw = localStorage.getItem(CHAPTER_CACHE_STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return;
+    }
+
+    state.chapterCatalog = parsed
+      .map((row) => ({
+        chapter: normalizeChapter(row.chapter),
+        count: Number(row.count) || 0,
+      }))
+      .filter((row) => row.chapter);
+
+    if (state.chapterCatalog.length > 0) {
+      populateChapterSelect(state.chapterCatalog);
+    }
+  } catch {
+    // Ignore invalid JSON or unavailable storage.
+  }
 }
 
 function normalize(text) {

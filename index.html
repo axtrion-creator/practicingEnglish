@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Finnish to English Match Practice</title>
     <link rel="stylesheet" href="styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="app.js" defer></script>
   </head>
@@ -22,70 +21,65 @@
 
       <section id="practice" class="hero">
         <p class="eyebrow">Language Practice</p>
-        <h1>Match Finnish Words to English</h1>
-        <p class="subtext">
-          Import Excel or CSV with Finnish words in column A and English words in column B.
-        </p>
+        <h1>Practice Finnish to English</h1>
+        <p class="subtext">Choose scope and press Start. Words load from your connected database.</p>
       </section>
 
-      <section class="controls" aria-label="Practice steps">
-        <ol class="stepper" aria-label="Practice setup steps">
-          <li class="step active" data-step="1" role="button" tabindex="0" aria-label="Go to step 1">1. Import</li>
-          <li class="step" data-step="2" role="button" tabindex="0" aria-label="Go to step 2">2. Setup</li>
-          <li class="step" data-step="3" role="button" tabindex="0" aria-label="Go to step 3">3. Start</li>
-        </ol>
-
-        <div class="step-panel" data-step-panel="1">
-          <label class="file-input">
-            <span>Excel / CSV file</span>
-            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
-          </label>
-          <p id="fileInlineError" class="inline-error hidden"></p>
-          <div class="step-actions">
-            <button id="importPrimaryBtn" type="button">Import word set</button>
-            <button id="sampleBtn" type="button" class="ghost">Use sample set</button>
+      <section class="controls" aria-label="Quick start">
+        <section class="quick-start-card" aria-label="Quick start card">
+          <div class="quick-start-top">
+            <div class="quick-start-meta">
+              <p class="quick-title">Quick Start</p>
+              <div class="quick-badges">
+                <span id="activePlayerBadge" class="status-pill">Player: -</span>
+                <span class="status-pill source">Database</span>
+                <span id="syncIndicatorBadge" class="status-pill offline">Offline</span>
+              </div>
+            </div>
             <button id="openSettingsBtn" type="button" class="ghost">Settings</button>
           </div>
-        </div>
 
-        <div class="step-panel hidden" data-step-panel="2">
-          <div class="mode-stack">
+          <div class="scope-row">
+            <label class="chapter-input">
+              <span>Practice scope</span>
+              <select id="scopeSelect">
+                <option value="all">All words</option>
+                <option value="chapter">Specific chapter</option>
+              </select>
+            </label>
+            <label class="chapter-input">
+              <span>Chapter</span>
+              <select id="chapterSelect" disabled>
+                <option value="">Select chapter</option>
+              </select>
+            </label>
+          </div>
+
+          <p id="chapterMetaText" class="inline-note hidden"></p>
+          <p id="scopeInlineError" class="inline-error hidden"></p>
+          <p id="readySummaryText" class="inline-note">Choose scope and press Start.</p>
+
+          <div class="quick-compact">
             <div class="mode-group" role="group" aria-label="Game mode">
-              <span class="group-label">Game mode</span>
-              <button class="mode-btn active" data-mode="match" type="button">1) Combine boxes</button>
-              <button class="mode-btn" data-mode="write" type="button">2) Write translations</button>
-              <button class="mode-btn" data-mode="flash" type="button">3) Flashcards</button>
+              <span class="group-label">Mode</span>
+              <button class="mode-btn active" data-mode="match" type="button">Combine boxes</button>
+              <button class="mode-btn" data-mode="write" type="button">Write translations</button>
+              <button class="mode-btn" data-mode="flash" type="button">Flashcards</button>
             </div>
-            <div class="mode-subgroup">
-              <label class="chapter-input">
-                <span>Chapter</span>
-                <select id="chapterSelect" disabled>
-                  <option value="__all__">All chapters</option>
-                </select>
-              </label>
-              <p id="chapterInlineError" class="inline-error hidden"></p>
-            </div>
+            <label class="switch-toggle" for="timedToggle">
+              <span class="group-label">Timer</span>
+              <span class="switch-wrap">
+                <input id="timedToggle" type="checkbox" />
+                <span class="slider" aria-hidden="true"></span>
+              </span>
+              <span class="switch-copy">1 minute</span>
+            </label>
           </div>
-          <label class="switch-toggle" for="timedToggle">
-            <span class="group-label">Timed mode</span>
-            <span class="switch-wrap">
-              <input id="timedToggle" type="checkbox" />
-              <span class="slider" aria-hidden="true"></span>
-            </span>
-            <span class="switch-copy">1 minute challenge</span>
-          </label>
-          <div class="step-actions">
-            <button id="continueBtn" type="button">Continue</button>
-          </div>
-        </div>
 
-        <div class="step-panel hidden" data-step-panel="3">
-          <p id="readySummaryText" class="inline-note">Ready to start.</p>
           <div class="step-actions">
             <button id="startBtn" type="button">Start</button>
-            <button id="syncNowBtn" type="button" class="ghost" disabled title="Connect Sync first">Sync now</button>
           </div>
-        </div>
+        </section>
       </section>
 
       <div id="miniBar" class="mini-bar hidden" aria-label="Gameplay info">
@@ -99,7 +93,7 @@
 
       <section id="gameplayArea" class="hidden">
         <section class="status-row" aria-live="polite">
-          <p id="statusText">Load a file or sample words to begin.</p>
+          <p id="statusText">Choose scope and press Start.</p>
           <p id="scoreText">0 correct / 0 attempts</p>
           <p id="timerText">Timer: Off</p>
         </section>
@@ -144,7 +138,7 @@
         </section>
 
         <section class="help" aria-label="How to play">
-          <p>Chapter selection auto-loads immediately when changed.</p>
+          <p>Select all words or one chapter, then press Start to begin immediately.</p>
           <p>Timed mode gives you 1 minute to score as many correct answers as possible.</p>
         </section>
       </section>
